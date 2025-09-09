@@ -1,5 +1,5 @@
 ---
-title: "Effects of changing temporal envelope parameters"
+title: "Shiny apps for Hyla detection"
 author: "Matias I. Munoz"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
@@ -32,7 +32,7 @@ wav <- readWave(paste0(getwd(), wav_folder, "Hyla_test.wav")) #requires package 
 ```
 
 
-A shiny app for testing different combinations of windows lengths and overlaps.
+## 1) Changing the parameters used for computing temporal envelopes.
 
 ```{r echo=FALSE}
 inputPanel(
@@ -65,7 +65,7 @@ renderPlot({
 
 
 
-### 2) Detecting calls with `timer()`
+## 2) Detecting calls with `timer()`
 
 Now that we know the basics about amplitude envelopes, we can use them to detect calls automatically. The `timer()` function in the `seewave` package computes the amplitude envelope of a waveform, and then detects calls using an **user-defined amplitude threshold**. We need to also define the:
 
@@ -78,7 +78,7 @@ Now that we know the basics about amplitude envelopes, we can use them to detect
 
 
 Let's try to detect the pulses in the sample call with a Shiny app:
-#### A Shiny app
+
 
 ```{r, echo=FALSE, fig.align='center', fig.dim=c(2, 2)}
 
@@ -149,9 +149,84 @@ oscillo(wav, from = 0.35, to = 0.8)
 })
 ```
 
+## 3) Export selection ----
+
+If we have determined the parameter values that work better for our signal, we can run our definitive detection:
+```{r, echo = TRUE}
+# Define parameter values:
+wl_detect <- 128  # samples
+ovlp_detect <- 99 # percentage
+thrs_detect <- 5  # percentage
+pwr_detect <- 1.2 # exponential applied to oscillogram
+dmin_detect <- 0.004 # minimum duration for detections
+
+# Run detector:
+detection <- timer(wave = wav,
+                   threshold = thrs_detect,
+                   msmooth = c(wl_detect, ovlp_detect),
+                   power = pwr_detect,
+                   dmin = dmin_detect,
+                   plot = FALSE)
+
+# Export results as a table with the start and end times of detections (in seconds):
+det_df <- cbind(detection$s.start, detection$s.end)
+# Obtain the maximum amplitude of the oscillogram (for plotting polygons later):
+y <- max(abs(wav@left))
+# Create polygons:
+dat<- 
+lapply(1:nrow(det_df),
+       function(x){
+         res <- list(xx = c(det_df[x,], rev(det_df[x,])),
+                     yy = c(-y, -y, y, y))
+         return(res)
+       })
+
+# Plot oscillogram with detections:
+oscillo(wav, type="n")
+invisible(lapply(dat, function(x){polygon(x$xx, x$yy, col = alpha("red", 0.25), border = NA)}))
+par(new = TRUE)
+oscillo(wav)
+```
+
+Lets see what the output looks like:
+```{r}
+detection
+```
+
+Lets export this results as a selections table that can be read in Raven:
+```{r}
+  
+# Function to create Raven readable file
+  Raven.form <- function(dat.fram)
+    {
+    dat.fram[ , c("Selection", "View", "Channel", "Low Freq (Hz)", "High Freq (Hz)")] <- c( rep(1: nrow(dat.fram)), rep("Spectrogram 1", nrow(dat.fram)), rep(1, nrow(dat.fram)), rep(0, nrow(dat.fram)), rep(22050, nrow(dat.fram)))
+    
+    dat.fram <- dat.fram[, c("Selection", "View", "Channel", "Begin Time (s)", "End Time (s)", "Low Freq (Hz)", "High Freq (Hz)")]
+    
+    dat.fram
+    }
+  
+  #Export selections in Raven format
+  df0 <- as.data.frame(cbind("Begin Time (s)" = detection$s.start,
+                             "End Time (s)" = detection$s.end))
+  df.raven <- Raven.form(df0)
+
+  kable(head(df.raven))
+```
+
+We can export the selections made with `timer()` as a .txt file that can be read in Raven Pro or Raven Lite (file: **Hyla_test.Table.1.selection.txt**)).
+```{r, echo = TRUE}
+write.table(df.raven, file = file.path("Hyla_test.Table.1.selection.txt"),  quote = F, col.names = T, row.names = F, sep = "\t")
+```
+
+It should look something like this (if you used the same detection parameter values as me):
+![Raven screenshot](Raven_capture.png)
+
 
 
 ## --------------------------------------0----------------------------------------
+
+
 This R Markdown document is made interactive using Shiny. Unlike the more traditional workflow of creating static reports, you can now create documents that allow your readers to change the assumptions underlying your analysis and see the results immediately. 
 
 To learn more, see [Interactive Documents](http://rmarkdown.rstudio.com/authoring_shiny.html).
