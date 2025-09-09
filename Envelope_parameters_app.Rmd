@@ -1,0 +1,201 @@
+---
+title: "Effects of changing temporal envelope parameters"
+author: "Matias I. Munoz"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo = FALSE, warning = FALSE, message = FALSE}
+library(seewave) # For audio analyses.
+library(tuneR) # For loading audios.
+library(scales) # For the alpha() function to make colors transparent.
+library(shiny) # For interactive documents.
+library(knitr) # For nice looking tables.
+
+
+# Colorblind friendly colors. ----
+blue_col <- "#004488"
+red_col <- "#BB5566"
+yellow_col <- "#DDAA33"
+
+# Folder with .wav files. ----
+wav_folder <- "/audio_files/"
+
+# Load the "Hyla_test.wav" file. ----
+wav <- readWave(paste0(getwd(), wav_folder, "Hyla_test.wav")) #requires package 'tuneR'.
+
+```
+
+
+A shiny app for testing different combinations of windows lengths and overlaps.
+
+```{r echo=FALSE}
+inputPanel(
+  selectInput("wl", label = "Number of samples in window:",
+              choices = c(4, 8, 16, 32, 64, 128, 256, 512, 1024, 2046), selected = 512),
+  
+  sliderInput("ovlp", label = "Overlap between windows:",
+              min = 0, max = 0.9, value = 0.5, step = 0.1),
+  
+  radioButtons("envt_type", label = "Choose a type of envelope:",
+               choices = c("abs", "hil"), selected = "abs")
+)
+
+renderPlot({
+  par(mfrow = c(1, 2), mar = c(4.1, 4.1, 0.28, 0.28)) # Just to create a figure with 1 row 
+  
+  #Full oscillogram
+  oscillo(wave = wav, colwave = "grey50")
+  par(new = TRUE)
+  env(wav, envt = "abs", colwave = red_col, msmooth = c(as.numeric(input$wl), as.numeric(input$ovlp)))
+  
+  #Zoom in 0.05s
+  oscillo(wave = wav, from = 0.61, to = 0.66, colwave = "grey50")
+  par(new = TRUE)
+  env(wav, from = 0.61, to = 0.66, colwave = red_col, envt = as.character(input$envt_type), msmooth = c(as.numeric(input$wl),   as.numeric(input$ovlp)))
+  
+  
+})
+```
+
+
+
+### 2) Detecting calls with `timer()`
+
+Now that we know the basics about amplitude envelopes, we can use them to detect calls automatically. The `timer()` function in the `seewave` package computes the amplitude envelope of a waveform, and then detects calls using an **user-defined amplitude threshold**. We need to also define the:
+
+1.  window's size (in samples)
+2.  overlap between windows (as a percentage)
+3.  amplitude threshold (as a percentage)
+4.  power exponential (numeric)
+5.  minimum duration for the detection (in seconds)
+6.  type of envelope (abs or hil)
+
+
+Let's try to detect the pulses in the sample call with a Shiny app:
+#### A Shiny app
+
+```{r, echo=FALSE, fig.align='center', fig.dim=c(2, 2)}
+
+wl_detect <- 128  # samples
+ovlp_detect <- 99 # percentage
+thrs_detect <- 5  # percentage
+pwr_detect <- 1.2 # exponential applied to oscillogram
+dmin_detect <- 0.004 # minimum duration for detections
+
+inputPanel(
+  selectInput("wl", label = "Window's size (samples):",
+              choices = c(4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048), selected = wl_detect),
+  
+  #sliderInput("wl", label = "Window's size (samples):",
+   #           min = 4, max = 2048, value = wl_detect, step = 1),
+  
+  sliderInput("ovlp", label = "Overlap between windows (%):",
+              min = 0, max = 99, value = ovlp_detect, step = 1),
+  
+  sliderInput("thrs", label = "Threshold (%):",
+              min = 1, max = 50, value = thrs_detect, step = 1),
+  
+  sliderInput("pwr", label = "Power factor (numeric):",
+              min = 1, max = 5, value = pwr_detect, step = 0.1),
+  
+    sliderInput("dmin", label = "Mininum duration (seconds):",
+              min = 0.001, max = 0.009, value = dmin_detect, step = 0.001),
+  
+  radioButtons("envt_type", label = "Choose a type of envelope:",
+               choices = c("abs", "hil"), selected = "abs")
+)
+
+renderPlot({
+ 
+par(mfrow = c(2, 1), mar  = c(4.1, 4.1, 1, 1))
+detection <- timer(wave = wav,
+                   threshold = as.numeric(input$thrs),
+                   msmooth = c(as.numeric(input$wl),   as.numeric(input$ovlp)),
+                   envt = as.character(input$envt_type),
+                   power = as.numeric(input$pwr),
+                   dmin = as.numeric(input$dmin),
+                   tlim = c(0.35, 0.8),
+                   plot = TRUE)
+
+
+# Create df with start and end times of detections
+det_df <- cbind(detection$s.start, detection$s.end)
+# Obtain the maximum amplitude value of the oscillogram, for polygons
+y <- max(abs(wav@left))
+
+# lapply loop to create polygons from det_df.
+dat<- 
+lapply(1:nrow(det_df),
+       function(x){
+         res <- list(xx = c(det_df[x,], rev(det_df[x,])),
+                     yy = c(-y, -y, y, y))
+         return(res)
+       })
+
+
+# Plot oscillogram and detections as polygons
+oscillo(wav, type="n", from = 0.35, to = 0.8)
+#add polygons
+invisible(lapply(dat, function(x){polygon(x$xx+0.35, x$yy, col = alpha("red", 0.25), border = NA)}))
+par(new = TRUE)
+oscillo(wav, from = 0.35, to = 0.8)
+  
+})
+```
+
+
+
+## --------------------------------------0----------------------------------------
+This R Markdown document is made interactive using Shiny. Unlike the more traditional workflow of creating static reports, you can now create documents that allow your readers to change the assumptions underlying your analysis and see the results immediately. 
+
+To learn more, see [Interactive Documents](http://rmarkdown.rstudio.com/authoring_shiny.html).
+
+## Inputs and Outputs
+
+You can embed Shiny inputs and outputs in your document. Outputs are automatically updated whenever inputs change.  This demonstrates how a standard R plot can be made interactive by wrapping it in the Shiny `renderPlot` function. The `selectInput` and `sliderInput` functions create the input widgets used to drive the plot.
+
+```{r eruptions, echo=FALSE}
+inputPanel(
+  selectInput("n_breaks", label = "Number of bins:",
+              choices = c(10, 20, 35, 50), selected = 20),
+  
+  sliderInput("bw_adjust", label = "Bandwidth adjustment:",
+              min = 0.2, max = 2, value = 1, step = 0.2)
+)
+
+renderPlot({
+  hist(faithful$eruptions, probability = TRUE, breaks = as.numeric(input$n_breaks),
+       xlab = "Duration (minutes)", main = "Geyser eruption duration")
+  
+  dens <- density(faithful$eruptions, adjust = input$bw_adjust)
+  lines(dens, col = "blue")
+})
+```
+
+## Embedded Application
+
+It's also possible to embed an entire Shiny application within an R Markdown document using the `shinyAppDir` function. This example embeds a Shiny application located in another directory:
+
+```{r tabsets, echo=FALSE}
+shinyAppDir(
+  system.file("examples/06_tabsets", package = "shiny"),
+  options = list(
+    width = "100%", height = 550
+  )
+)
+```
+
+Note the use of the `height` parameter to determine how much vertical space the embedded application should occupy.
+
+You can also use the `shinyApp` function to define an application inline rather then in an external directory.
+
+In all of R code chunks above the `echo = FALSE` attribute is used. This is to prevent the R code within the chunk from rendering in the document alongside the Shiny components.
+
+
+
