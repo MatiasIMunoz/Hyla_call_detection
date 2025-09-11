@@ -1,0 +1,222 @@
+---
+title: "Timer_detection"
+author: "Matias I Munoz"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Detecting calls with `timer()`
+
+Now that we know the basics about amplitude envelopes, we can use them to detect calls automatically.
+For this we use the function `timer()`.
+
+1) Load libraries and a test audio file ("Hyla_test.wav")
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+library(seewave) # For audio analyses.
+library(tuneR) # For loading audios.
+library(scales) # For the alpha() function to make colors transparent.
+library(shiny) # For interactive documents.
+library(knitr) # For nice looking tables.
+
+
+# Colorblind friendly colors. ----
+blue_col <- "#004488"
+red_col <- "#BB5566"
+yellow_col <- "#DDAA33"
+
+# Folder with .wav files. ----
+wav_folder <- "/audio_files/"
+
+# Load the "Hyla_test.wav" file. ----
+wav <- readWave(paste0(getwd(), wav_folder, "Hyla_test.wav")) #requires package 'tuneR'.
+
+```
+
+Let's check the oscillogram of our wav file:
+```{r,  fig.align='center'}
+oscillo(wav, fastdisp = FALSE)
+```
+
+Lets make a quick run of the `timer()` function:
+```{r, fig.align='center'}
+timer(wav,
+      tlim =c(0.3, 0.8)
+      )
+```
+
+The default is not very good...
+
+The `timer()` function in the `seewave` package computes the amplitude envelope of a waveform, and then detects calls using an **user-defined amplitude threshold**. We can change some parameter to improve the detection:
+
+1.  window's size (in samples)
+2.  overlap between windows (as a percentage)
+3.  amplitude threshold (as a percentage)
+4.  power exponential (numeric)
+5.  minimum duration for the detection (in seconds)
+6.  type of envelope (abs or hil)
+
+Run `?timer` in your session to see all the possible arguments of the function.
+
+We can see the influence of some of these parameters on the detections with a Shiny app:
+```{r, echo=FALSE, fig.align='center', fig.dim=c(2, 2)}
+
+wl_detect <- 128  # samples
+ovlp_detect <- 99 # percentage
+thrs_detect <- 5  # percentage
+pwr_detect <- 1.2 # exponential applied to oscillogram
+dmin_detect <- 0.004 # minimum duration for detections
+
+inputPanel(
+  selectInput("wl_2", label = "Window's size (samples):",
+              choices = c(4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048), selected = wl_detect),
+  
+  #sliderInput("wl", label = "Window's size (samples):",
+   #           min = 4, max = 2048, value = wl_detect, step = 1),
+  
+  sliderInput("ovlp_2", label = "Overlap between windows (%):",
+              min = 0, max = 99, value = ovlp_detect, step = 1),
+  
+  sliderInput("thrs_2", label = "Threshold (%):",
+              min = 1, max = 50, value = thrs_detect, step = 1),
+  
+  sliderInput("pwr_2", label = "Power factor (numeric):",
+              min = 1, max = 5, value = pwr_detect, step = 0.1),
+  
+    sliderInput("dmin_2", label = "Mininum duration (seconds):",
+              min = 0.001, max = 0.009, value = dmin_detect, step = 0.001),
+  
+  radioButtons("envt_type_2", label = "Choose a type of envelope:",
+               choices = c("abs", "hil"), selected = "abs")
+)
+
+renderPlot({
+ 
+par(mfrow = c(2, 1), mar  = c(4.1, 4.1, 1, 1))
+detection <- timer(wave = wav,
+                   threshold = as.numeric(input$thrs_2),
+                   msmooth = c(as.numeric(input$wl_2),   as.numeric(input$ovlp_2)),
+                   envt = as.character(input$envt_type_2),
+                   power = as.numeric(input$pwr_2),
+                   dmin = as.numeric(input$dmin_2),
+                   tlim = c(0.35, 0.8),
+                   plot = TRUE)
+
+
+# Create df with start and end times of detections
+det_df <- cbind(detection$s.start, detection$s.end)
+# Obtain the maximum amplitude value of the oscillogram, for polygons
+y <- max(abs(wav@left))
+
+# lapply loop to create polygons from det_df.
+dat<- 
+lapply(1:nrow(det_df),
+       function(x){
+         res <- list(xx = c(det_df[x,], rev(det_df[x,])),
+                     yy = c(-y, -y, y, y))
+         return(res)
+       })
+
+
+# Plot oscillogram and detections as polygons
+oscillo(wav, type="n", from = 0.35, to = 0.8)
+#add polygons
+invisible(lapply(dat, function(x){polygon(x$xx+0.35, x$yy, col = alpha("red", 0.25), border = NA)}))
+par(new = TRUE)
+oscillo(wav, from = 0.35, to = 0.8)
+})
+```
+
+So if we are interested in counting pulses, then the following parameters work well (on this recording):\
+```{r}
+wl_detect <- 128  # windows length, in samples.
+ovlp_detect <- 99 # overlap between windows, in percentage.
+thrs_detect <- 5  # detection threshold, in percentage.
+pwr_detect <- 1.2 # exponential applied to oscillogram to reduce low amp. noise, integer.
+dmin_detect <- 0.004 # minimum duration for detections, in seconds.
+```
+
+Let's run a `timer()` detection using these parameters:
+
+```{r,  fig.align='center'}
+# Run detector:
+detection <- timer(wave = wav,
+                   threshold = thrs_detect,
+                   msmooth = c(wl_detect, ovlp_detect),
+                   power = pwr_detect,
+                   dmin = dmin_detect,
+                   plot = TRUE)
+detection
+
+```
+
+There's a lot of stuff in the output of the `timer()` function...
+But we can export this as a "Selection Table" in the format used by RavenPro (or RavenLite).
+
+```{r, eval = F, echo = F}
+
+# Function to create Raven readable file
+  Raven.form <- function(dat.fram)
+    {
+    
+    
+    dat.fram[ , c("Selection", "View", "Channel", "Low Freq (Hz)", "High Freq (Hz)")] <- c( rep(1: nrow(dat.fram)), rep("Spectrogram 1", nrow(dat.fram)), rep(1, nrow(dat.fram)), rep(0, nrow(dat.fram)), rep(22050, nrow(dat.fram)))
+    
+    dat.fram <- dat.fram[, c("Selection", "View", "Channel", "Begin Time (s)", "End Time (s)", "Low Freq (Hz)", "High Freq (Hz)")]
+    
+    dat.fram
+    }
+  
+  #Export selections in Raven format
+  df0 <- as.data.frame(cbind("Begin Time (s)" = detection$s.start,
+                             "End Time (s)" = detection$s.end))
+  df.raven <- Raven.form(df0)
+
+  kable(head(df.raven))
+```
+
+
+```{r}
+
+# Function to create Raven readable file----
+
+Raven.format <- function(s.start, s.end) {
+  
+  # create the minimal dataframe
+  dat.fram <- as.data.frame(cbind("Begin Time (s)" = s.start,
+                                  "End Time (s)" = s.end))
+
+  # add Raven-required columns
+  dat.fram <- cbind.data.frame(
+    Selection = 1:nrow(dat.fram),
+    View = "Spectrogram 1",
+    Channel = 1,
+    dat.fram,
+    `Low Freq (Hz)` = 0,
+    `High Freq (Hz)` = 22050
+  )
+  
+  dat.fram
+}
+
+# Apply the function to the detections from `timer()`
+df.raven <- Raven.format(s.start = detection$s.start, s.end = detection$s.end)
+
+```
+
+The table will look like this:
+```{r, echo = FALSE}
+kable(head(df.raven))
+```
+
+We can now export this table a .txt file that can be opened in Raven (Pro or Lite):
+```{r, echo = TRUE}
+write.table(df.raven, file = file.path("selections/Hyla_test.Table.1.selection.txt"),  quote = F, col.names = T, row.names = F, sep = "\t")
+```
+
+If you open the wav file i Raven, and drag the selection table (.txt) just created, it should look like this:
+![Raven screenshot](Raven_capture.png)

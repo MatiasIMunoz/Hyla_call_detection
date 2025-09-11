@@ -10,7 +10,7 @@ runtime: shiny
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r echo = FALSE, warning = FALSE, message = FALSE}
+```{r echo = TRUE, warning = FALSE, message = FALSE}
 library(seewave) # For audio analyses.
 library(tuneR) # For loading audios.
 library(scales) # For the alpha() function to make colors transparent.
@@ -36,11 +36,14 @@ wav <- readWave(paste0(getwd(), wav_folder, "Hyla_test.wav")) #requires package 
 
 ```{r echo=FALSE}
 inputPanel(
-  selectInput("wl", label = "Number of samples in window:",
-              choices = c(4, 8, 16, 32, 64, 128, 256, 512, 1024, 2046), selected = 512),
+  #selectInput("wl", label = "Number of samples in window:",
+   #           choices = c(4, 8, 16, 32, 64, 128, 256, 512, 1024, 2046), selected = 512),
+  
+  sliderInput("wl", label = "Number of samples in window:",
+              min = 4, max = 2048, value = 512, step = 1),
   
   sliderInput("ovlp", label = "Overlap between windows:",
-              min = 0, max = 0.9, value = 0.5, step = 0.1),
+              min = 0, max = 0.99, value = 0.5, step = 0.01),
   
   radioButtons("envt_type", label = "Choose a type of envelope:",
                choices = c("abs", "hil"), selected = "abs")
@@ -52,12 +55,21 @@ renderPlot({
   #Full oscillogram
   oscillo(wave = wav, colwave = "grey50")
   par(new = TRUE)
-  env(wav, envt = "abs", colwave = red_col, msmooth = c(as.numeric(input$wl), as.numeric(input$ovlp)))
+  env(wav, 
+      envt = as.character(input$envt_type),
+      colwave = red_col, 
+      msmooth = c(as.numeric(input$wl), as.numeric(input$ovlp))
+      )
   
   #Zoom in 0.05s
   oscillo(wave = wav, from = 0.61, to = 0.66, colwave = "grey50")
   par(new = TRUE)
-  env(wav, from = 0.61, to = 0.66, colwave = red_col, envt = as.character(input$envt_type), msmooth = c(as.numeric(input$wl),   as.numeric(input$ovlp)))
+  env(wav, 
+      from = 0.61, to = 0.66, 
+      colwave = red_col,
+      envt = as.character(input$envt_type),
+      msmooth = c(as.numeric(input$wl), as.numeric(input$ovlp))
+      )
   
   
 })
@@ -89,25 +101,25 @@ pwr_detect <- 1.2 # exponential applied to oscillogram
 dmin_detect <- 0.004 # minimum duration for detections
 
 inputPanel(
-  selectInput("wl", label = "Window's size (samples):",
+  selectInput("wl_2", label = "Window's size (samples):",
               choices = c(4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048), selected = wl_detect),
   
   #sliderInput("wl", label = "Window's size (samples):",
    #           min = 4, max = 2048, value = wl_detect, step = 1),
   
-  sliderInput("ovlp", label = "Overlap between windows (%):",
+  sliderInput("ovlp_2", label = "Overlap between windows (%):",
               min = 0, max = 99, value = ovlp_detect, step = 1),
   
-  sliderInput("thrs", label = "Threshold (%):",
+  sliderInput("thrs_2", label = "Threshold (%):",
               min = 1, max = 50, value = thrs_detect, step = 1),
   
-  sliderInput("pwr", label = "Power factor (numeric):",
+  sliderInput("pwr_2", label = "Power factor (numeric):",
               min = 1, max = 5, value = pwr_detect, step = 0.1),
   
-    sliderInput("dmin", label = "Mininum duration (seconds):",
+    sliderInput("dmin_2", label = "Mininum duration (seconds):",
               min = 0.001, max = 0.009, value = dmin_detect, step = 0.001),
   
-  radioButtons("envt_type", label = "Choose a type of envelope:",
+  radioButtons("envt_type_2", label = "Choose a type of envelope:",
                choices = c("abs", "hil"), selected = "abs")
 )
 
@@ -115,11 +127,11 @@ renderPlot({
  
 par(mfrow = c(2, 1), mar  = c(4.1, 4.1, 1, 1))
 detection <- timer(wave = wav,
-                   threshold = as.numeric(input$thrs),
-                   msmooth = c(as.numeric(input$wl),   as.numeric(input$ovlp)),
-                   envt = as.character(input$envt_type),
-                   power = as.numeric(input$pwr),
-                   dmin = as.numeric(input$dmin),
+                   threshold = as.numeric(input$thrs_2),
+                   msmooth = c(as.numeric(input$wl_2),   as.numeric(input$ovlp_2)),
+                   envt = as.character(input$envt_type_2),
+                   power = as.numeric(input$pwr_2),
+                   dmin = as.numeric(input$dmin_2),
                    tlim = c(0.35, 0.8),
                    plot = TRUE)
 
@@ -145,11 +157,10 @@ oscillo(wav, type="n", from = 0.35, to = 0.8)
 invisible(lapply(dat, function(x){polygon(x$xx+0.35, x$yy, col = alpha("red", 0.25), border = NA)}))
 par(new = TRUE)
 oscillo(wav, from = 0.35, to = 0.8)
-  
 })
 ```
 
-## 3) Export selection ----
+## 3) Export selection
 
 If we have determined the parameter values that work better for our signal, we can run our definitive detection:
 ```{r, echo = TRUE}
@@ -222,6 +233,45 @@ write.table(df.raven, file = file.path("Hyla_test.Table.1.selection.txt"),  quot
 It should look something like this (if you used the same detection parameter values as me):
 ![Raven screenshot](Raven_capture.png)
 
+## Test with a field recording...
+
+Load the wav file provided by Michael in his email:
+```{r}
+# Load the "1G2G3BR4BR-B1-20190621.WAV" file. ----
+wav_field <- readWave(paste0(getwd(), wav_folder, "1G2G3BR4BR-B1-20190621.wav"))
+wav_field
+```
+
+Lets see if we can get an oscillogram. R is not great at displaying long audiofiles, but the `fastdisp = TRUE` argument may help...
+```{r}
+oscillo(wav_field, fastdisp = TRUE)
+```
+
+One first approach to reduce noise is to filter out unwanted frequencies.
+The calls of our frogs (H. chrysoscelis) have their main spectral components between 1 - 4 kHz.
+But perhaps a filter between 2 - 4 kHz works better...
+The `ffilter()` function can help us filter our sound:
+```{r}
+wav_field_filt <- ffilter(wav_field, 
+                          bandpass = TRUE, 
+                          from = 2000, # Low-frequency limit
+                          to = 4000,   # High-frequency limit
+                          output = "Wave")
+oscillo(wav_field_filt, fastdisp = TRUE)
+```
+
+
+Now lets run the `timer()` function through this filtered file using the parameters we defined before (wl, ovlp, threshold). Because there is background noise, we will have to play around with the `power` argument:
+```{r, eval = TRUE}
+# Run detector:
+timer(wave = wav_field_filt,
+      tlim = c(90, 110),
+      threshold = 10,
+      msmooth = c(512, 50),
+      power = 1.2,
+      dmin = 0.1,
+      plot = TRUE)
+```
 
 
 ## --------------------------------------0----------------------------------------

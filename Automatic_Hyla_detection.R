@@ -136,4 +136,43 @@ env(wav,
     colwave = "darkorange",
     msmooth = c(wl*3, ovlp)) # 768 samples window length
 
+## Detect with timer () ----
 
+wl_detect <- 128  # windows length, in samples.
+ovlp_detect <- 99 # overlap between windows, in percentage.
+thrs_detect <- 5  # detection threshold, in percentage.
+pwr_detect <- 1.2 # exponential applied to oscillogram to reduce low amp. noise, integer.
+dmin_detect <- 0.004 # minimum duration for detections, in seconds.
+
+detection <- timer(wave = wav,
+                   threshold = thrs_detect,
+                   msmooth = c(wl_detect, ovlp_detect),
+                   power = pwr_detect,
+                   dmin = dmin_detect,
+                   plot = TRUE)
+detection
+
+
+# Function to create Raven readable file----
+
+Raven.format <- function(s.start, s.end) {
+  
+  # create the minimal dataframe
+  dat.fram <- as.data.frame(cbind("Begin Time (s)" = s.start,
+                                  "End Time (s)" = s.end))
+
+  # add Raven-required columns
+  dat.fram <- cbind.data.frame(
+    Selection = 1:nrow(dat.fram),
+    View = "Spectrogram 1",
+    Channel = 1,
+    dat.fram,
+    `Low Freq (Hz)` = 0,
+    `High Freq (Hz)` = 22050
+  )
+  
+  dat.fram
+}
+
+df.raven <- Raven.format(s.start = detection$s.start, s.end = detection$s.end)
+df.raven
