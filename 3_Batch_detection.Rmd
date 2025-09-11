@@ -1,0 +1,97 @@
+---
+title: "Batch_detection"
+author: "Matias I Munoz"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Running a `timer()` detector across hundreds or thousands of files
+
+First, load librares, etc...
+```{r echo = TRUE, warning = FALSE, message = FALSE}
+library(seewave) # For audio analyses.
+library(tuneR) # For loading audios.
+library(scales) # For the alpha() function to make colors transparent.
+library(shiny) # For interactive documents.
+library(knitr) # For nice looking tables.
+
+
+# Colorblind friendly colors. ----
+blue_col <- "#004488"
+red_col <- "#BB5566"
+yellow_col <- "#DDAA33"
+
+```
+Let's explore the audiofiles inside the "audio_files" folder:
+```{r}
+# Folder with .wav files. ----
+wav_folder <- "/audio_files/"
+
+# Create a list with all the files in the folder "audio_files" ----
+listwav <- list.files(path = paste0(getwd(), wav_folder),
+                      pattern = "*.wav",
+                      ignore.case = TRUE) # if FALSE then it ignores "1G2G3BR4BR-B1-20190621.WAV" 
+
+listwav
+```
+
+Let's say we want to run our detection across files 1 to 6 of the list.
+```{r}
+listwav_short <- listwav[1:6]
+```
+Before running detections, lets create the function to export `timer()` detections to Raven format
+```{r, eval = F}
+
+# Function to create Raven readable file----
+
+Raven.format <- function(s.start, s.end) {
+  
+  # create the minimal dataframe
+  dat.fram <- as.data.frame(cbind("Begin Time (s)" = s.start,
+                                  "End Time (s)" = s.end))
+
+  # add Raven-required columns
+  dat.fram <- cbind.data.frame(
+    Selection = 1:nrow(dat.fram),
+    View = "Spectrogram 1",
+    Channel = 1,
+    dat.fram,
+    `Low Freq (Hz)` = 0,
+    `High Freq (Hz)` = 22050
+  )
+  
+  dat.fram
+}
+
+```
+
+
+
+Now we can write a `for{}` loop to run a `timer()` function across many files:
+```{r, eval = F}
+
+i = 1
+for(i in 1:length(listwav_short))
+{
+  waveFile <- readWave(paste0(getwd(), wav_folder, listwav_short[i]))
+  waveName <- substring(listwav_short[i], 1, (nchar(listwav_short[i])-4))
+  detectLoop <- timer(waveFile,
+                     msmooth = c(128, 99),
+                     envt = "hil",
+                     threshold = 5,
+                     power = 1.2,
+                     dmin = 0.004,
+                     plot = FALSE)
+  detectLoop <- Raven.format(s.start = detectLoop$s.start, s.end = detectLoop$s.end)
+  write.table(detectLoop,
+              file = paste0("selections/", waveName,".Table.1.selection.txt"),
+              quote = FALSE,
+              col.names = TRUE,
+              row.names = FALSE,
+              sep = "\t")
+}
+```

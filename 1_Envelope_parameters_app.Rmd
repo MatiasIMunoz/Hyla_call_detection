@@ -77,7 +77,7 @@ renderPlot({
 
 
 
-## 2) Detecting calls with `timer()`
+## 2)] Detecting calls with `timer()`
 
 Now that we know the basics about amplitude envelopes, we can use them to detect calls automatically. The `timer()` function in the `seewave` package computes the amplitude envelope of a waveform, and then detects calls using an **user-defined amplitude threshold**. We need to also define the:
 
@@ -163,7 +163,7 @@ oscillo(wav, from = 0.35, to = 0.8)
 ## 3) Export selection
 
 If we have determined the parameter values that work better for our signal, we can run our definitive detection:
-```{r, echo = TRUE}
+```{r, echo = TRUE, fig.align='center'}
 # Define parameter values:
 wl_detect <- 128  # samples
 ovlp_detect <- 99 # percentage
@@ -227,13 +227,13 @@ Lets export this results as a selections table that can be read in Raven:
 
 We can export the selections made with `timer()` as a .txt file that can be read in Raven Pro or Raven Lite (file: **Hyla_test.Table.1.selection.txt**)).
 ```{r, echo = TRUE}
-write.table(df.raven, file = file.path("Hyla_test.Table.1.selection.txt"),  quote = F, col.names = T, row.names = F, sep = "\t")
+write.table(df.raven, file = file.path("selections/Hyla_test.Table.1.selection.txt"),  quote = F, col.names = T, row.names = F, sep = "\t")
 ```
 
 It should look something like this (if you used the same detection parameter values as me):
 ![Raven screenshot](Raven_capture.png)
 
-## Test with a field recording...
+## 4) Test with a field recording...
 
 Load the wav file provided by Michael in his email:
 ```{r}
@@ -243,28 +243,46 @@ wav_field
 ```
 
 Lets see if we can get an oscillogram. R is not great at displaying long audiofiles, but the `fastdisp = TRUE` argument may help...
-```{r}
+```{r, fig.align='center', fig.dim=c(10, 4),  fig.show="hold"}
+par(mfrow = c(1, 2), mar = c(4.1, 4.1, 0.28, 0.28)) # Just to create a figure with 1 row 
+
 oscillo(wav_field, fastdisp = TRUE)
+abline(v = c(90, 110), col = "red", lty = 2, lwd = 2)
+
+oscillo(wav_field, from = 90, to = 110, fastdisp = FALSE)
+
 ```
 
 One first approach to reduce noise is to filter out unwanted frequencies.
 The calls of our frogs (H. chrysoscelis) have their main spectral components between 1 - 4 kHz.
 But perhaps a filter between 2 - 4 kHz works better...
 The `ffilter()` function can help us filter our sound:
-```{r}
-wav_field_filt <- ffilter(wav_field, 
-                          bandpass = TRUE, 
-                          from = 2000, # Low-frequency limit
-                          to = 4000,   # High-frequency limit
-                          output = "Wave")
-oscillo(wav_field_filt, fastdisp = TRUE)
+```{r, fig.align='center', fig.dim=c(10, 4), fig.show='hold'}
+par(mfrow = c(1, 2), mar = c(4.1, 4.1, 0.28, 0.28)) # Just to create a figure with 1 row 
+
+f <- 44100
+filter <- squarefilter(f = f, from = 2000, to = 4000) 
+
+# If you want to have a look at the filter you can uncomment this line:
+#plot(filter, type = "l")
+
+wav_field_sqfilt <- fir(wav_field,
+                      f = f,
+                      wl = 1024,
+                      custom = filter,
+                      output = "Wave")
+
+oscillo(wav_field_sqfilt, fastdisp = TRUE)
+abline(v = c(90, 110), col = "red", lty = 2, lwd = 2)
+
+oscillo(wav_field_sqfilt, from = 90, to = 110, fastdisp = FALSE)
 ```
 
 
 Now lets run the `timer()` function through this filtered file using the parameters we defined before (wl, ovlp, threshold). Because there is background noise, we will have to play around with the `power` argument:
 ```{r, eval = TRUE}
-# Run detector:
-timer(wave = wav_field_filt,
+# Run detector through 20 seconds of recording:
+timer(wave = wav_field_sqfilt,
       tlim = c(90, 110),
       threshold = 10,
       msmooth = c(512, 50),
@@ -273,54 +291,22 @@ timer(wave = wav_field_filt,
       plot = TRUE)
 ```
 
+It doesnt look awful... so we can just try to go ahead and run the detection through th whole recording
+```{r}
+# Run detector:
+detection_field <-
+timer(wave = wav_field_sqfilt,
+     # tlim = c(90, 110),
+      threshold = 15,
+      msmooth = c(512, 50),
+      power = 1.1,
+      dmin = 0.1,
+      plot = FALSE)
 
-## --------------------------------------0----------------------------------------
-
-
-This R Markdown document is made interactive using Shiny. Unlike the more traditional workflow of creating static reports, you can now create documents that allow your readers to change the assumptions underlying your analysis and see the results immediately. 
-
-To learn more, see [Interactive Documents](http://rmarkdown.rstudio.com/authoring_shiny.html).
-
-## Inputs and Outputs
-
-You can embed Shiny inputs and outputs in your document. Outputs are automatically updated whenever inputs change.  This demonstrates how a standard R plot can be made interactive by wrapping it in the Shiny `renderPlot` function. The `selectInput` and `sliderInput` functions create the input widgets used to drive the plot.
-
-```{r eruptions, echo=FALSE}
-inputPanel(
-  selectInput("n_breaks", label = "Number of bins:",
-              choices = c(10, 20, 35, 50), selected = 20),
-  
-  sliderInput("bw_adjust", label = "Bandwidth adjustment:",
-              min = 0.2, max = 2, value = 1, step = 0.2)
-)
-
-renderPlot({
-  hist(faithful$eruptions, probability = TRUE, breaks = as.numeric(input$n_breaks),
-       xlab = "Duration (minutes)", main = "Geyser eruption duration")
-  
-  dens <- density(faithful$eruptions, adjust = input$bw_adjust)
-  lines(dens, col = "blue")
-})
+#Export selections in Raven format
+df0_field <- as.data.frame(cbind("Begin Time (s)" = detection_field$s.start,
+                             "End Time (s)" = detection_field$s.end))
+df_field <- Raven.form(df0_field)
+head(df_field)
+write.table(df_field, file = "selections/1G2G3BR4BR-B1-20190621.Table.1.selection.txt",  quote = F, col.names = T, row.names = F, sep = "\t")
 ```
-
-## Embedded Application
-
-It's also possible to embed an entire Shiny application within an R Markdown document using the `shinyAppDir` function. This example embeds a Shiny application located in another directory:
-
-```{r tabsets, echo=FALSE}
-shinyAppDir(
-  system.file("examples/06_tabsets", package = "shiny"),
-  options = list(
-    width = "100%", height = 550
-  )
-)
-```
-
-Note the use of the `height` parameter to determine how much vertical space the embedded application should occupy.
-
-You can also use the `shinyApp` function to define an application inline rather then in an external directory.
-
-In all of R code chunks above the `echo = FALSE` attribute is used. This is to prevent the R code within the chunk from rendering in the document alongside the Shiny components.
-
-
-

@@ -157,29 +157,6 @@ detection
 There's a lot of stuff in the output of the `timer()` function...
 But we can export this as a "Selection Table" in the format used by RavenPro (or RavenLite).
 
-```{r, eval = F, echo = F}
-
-# Function to create Raven readable file
-  Raven.form <- function(dat.fram)
-    {
-    
-    
-    dat.fram[ , c("Selection", "View", "Channel", "Low Freq (Hz)", "High Freq (Hz)")] <- c( rep(1: nrow(dat.fram)), rep("Spectrogram 1", nrow(dat.fram)), rep(1, nrow(dat.fram)), rep(0, nrow(dat.fram)), rep(22050, nrow(dat.fram)))
-    
-    dat.fram <- dat.fram[, c("Selection", "View", "Channel", "Begin Time (s)", "End Time (s)", "Low Freq (Hz)", "High Freq (Hz)")]
-    
-    dat.fram
-    }
-  
-  #Export selections in Raven format
-  df0 <- as.data.frame(cbind("Begin Time (s)" = detection$s.start,
-                             "End Time (s)" = detection$s.end))
-  df.raven <- Raven.form(df0)
-
-  kable(head(df.raven))
-```
-
-
 ```{r}
 
 # Function to create Raven readable file----
